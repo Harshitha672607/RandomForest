@@ -1,4 +1,4 @@
-name: Preprocess Employee Performance Data
+name: 1Preprocess Employee Performance Data
 description: Preprocesses employee performance data with scaling for numeric features and encoding for categorical features
 inputs:
   - name: train_data
@@ -76,7 +76,10 @@ implementation:
         
         print(f'Target column: {target_col}')
         print(f'Feature columns: {feature_columns}')
-        print(f'Target distribution: {dataset_info.get("target_distribution", {})}')
+        
+        # FIXED: Extract target_distribution separately to avoid syntax error
+        target_distribution = dataset_info.get('target_distribution', {})
+        print(f'Target distribution: {target_distribution}')
         
         X_train = train_df[feature_columns]
         y_train = train_df[target_col]
