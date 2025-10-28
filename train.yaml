@@ -1,4 +1,4 @@
-name: Employee Performance Random Forest Train Model
+name: 1Employee Performance Random Forest Train Model
 description: Trains Random Forest model on employee performance data
 inputs:
   - name: data_path
@@ -52,6 +52,23 @@ implementation:
             def __init__(self, data_dict=None):
                 if data_dict:
                     self.__dict__.update(data_dict)
+        
+        # Custom JSON encoder to handle NumPy types
+        class NumpyEncoder(json.JSONEncoder):
+            def default(self, obj):
+                if isinstance(obj, (np.integer, np.int64)):
+                    return int(obj)
+                elif isinstance(obj, (np.floating, np.float64)):
+                    return float(obj)
+                elif isinstance(obj, (np.bool_, np.bool)):
+                    return bool(obj)
+                elif isinstance(obj, np.ndarray):
+                    return obj.tolist()
+                elif isinstance(obj, pd.Series):
+                    return obj.tolist()
+                elif pd.isna(obj):
+                    return None
+                return super().default(obj)
         
         # Load data
         if not os.path.exists(data_path):
@@ -136,11 +153,14 @@ implementation:
             # Get feature names after preprocessing
             numeric_features_out = numeric_features
             categorical_features_out = preprocessor.named_transformers_['cat'].get_feature_names_out(categorical_features)
-            feature_names = np.r_[numeric_features_out, categorical_features_out]
+            feature_names = np.r_[numeric_features_out, categorical_features_out].tolist()
+            
+            # Convert feature importances to Python floats
+            feature_importances = [float(imp) for imp in classifier.feature_importances_]
             
             feature_importance_df = pd.DataFrame({
                 'feature': feature_names,
-                'importance': classifier.feature_importances_
+                'importance': feature_importances
             }).sort_values('importance', ascending=False)
             
             print('Feature Importance (Random Forest):')
@@ -152,10 +172,10 @@ implementation:
             feature_names = list(X_train.columns)
             feature_importance_df = pd.DataFrame({
                 'feature': feature_names,
-                'importance': [0] * len(feature_names)
+                'importance': [0.0] * len(feature_names)
             })
         
-        # Create training history
+        # Create training history with serializable data types
         history = {
             'train_metrics': {
                 'accuracy': float(train_accuracy),
@@ -170,10 +190,10 @@ implementation:
                 'f1_score': float(test_f1)
             },
             'feature_importance': feature_importance_df.to_dict('records'),
-            'feature_names': list(feature_names) if hasattr(feature_names, 'tolist') else feature_names,
-            'training_samples': len(X_train),
-            'test_samples': len(X_test),
-            'class_distribution': pd.Series(y_train).value_counts().to_dict(),
+            'feature_names': feature_names if isinstance(feature_names, list) else feature_names.tolist(),
+            'training_samples': int(len(X_train)),
+            'test_samples': int(len(X_test)),
+            'class_distribution': {int(k): int(v) for k, v in pd.Series(y_train).value_counts().to_dict().items()},
             'dataset_info': dataset_info
         }
         
@@ -187,9 +207,9 @@ implementation:
             with open(trained_model_path, 'wb') as f:
                 pickle.dump(model_pipeline, f)
             
-            # Save training history
+            # Save training history with custom encoder
             with open(training_history_path, 'w') as f:
-                json.dump(history, f, indent=2)
+                json.dump(history, f, indent=2, cls=NumpyEncoder)
             
             # Save feature importance as CSV string
             feature_importance_csv = feature_importance_df.to_csv(index=False)
