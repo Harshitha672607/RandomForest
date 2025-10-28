@@ -1,4 +1,4 @@
-name: Employee Performance Random Forest Evaluate Model
+name: 1Employee Performance Random Forest Evaluate Model
 description: Evaluates trained Employee Performance Random Forest model and generates comprehensive classification metrics
 inputs:
   - name: trained_model
@@ -11,7 +11,6 @@ outputs:
   - name: metrics
     type: Metrics
   - name: metrics_json
-    type: String
   - name: evaluation_report
     type: String
 implementation:
@@ -46,12 +45,6 @@ implementation:
         print(f'Data path: {data_path}')
         print(f'Feature importance path: {feature_importance_path}')
         
-        # Define the DataWrapper class
-        class DataWrapper:
-            def __init__(self, data_dict=None):
-                if data_dict:
-                    self.__dict__.update(data_dict)
-        
         # Load trained model
         if not os.path.exists(trained_model_path):
             raise FileNotFoundError(f'trained_model does not exist: {trained_model_path}')
@@ -66,13 +59,52 @@ implementation:
         except Exception as e:
             raise Exception(f'ERROR loading trained model: {e}')
             
+        # Try multiple ways to load data
+        X_test = None
+        y_test = None
+        
+        # Method 1: Try loading as pickle (processed data)
         try:
             with open(data_path, 'rb') as f:
                 data_wrapper = pickle.load(f)
-            print('Data loaded successfully')
-        except Exception as e:
-            raise Exception(f'ERROR loading data: {e}')
+            print('Data loaded as pickle successfully')
             
+            # Extract from DataWrapper object
+            if hasattr(data_wrapper, 'X_test'):
+                X_test = data_wrapper.X_test
+                y_test = data_wrapper.y_test
+            elif hasattr(data_wrapper, '__dict__') and 'X_test' in data_wrapper.__dict__:
+                X_test = data_wrapper.__dict__['X_test']
+                y_test = data_wrapper.__dict__['y_test']
+            elif isinstance(data_wrapper, dict):
+                X_test = data_wrapper.get('X_test')
+                y_test = data_wrapper.get('y_test')
+                
+        except Exception as e:
+            print(f'Failed to load as pickle: {e}')
+            # Method 2: Try loading as CSV (raw data)
+            try:
+                df = pd.read_csv(data_path)
+                print('Data loaded as CSV successfully')
+                
+                # Assume the data needs to be preprocessed
+                target_col = 'performance_rating'
+                if target_col in df.columns:
+                    X_test = df.drop(columns=[target_col, 'employee_id'] if 'employee_id' in df.columns else [target_col])
+                    y_test = df[target_col]
+                else:
+                    raise Exception('Target column not found in CSV data')
+                    
+            except Exception as e2:
+                raise Exception(f'ERROR loading data as either pickle or CSV: {e2}')
+        
+        if X_test is None or y_test is None:
+            raise Exception('Could not extract X_test and y_test from data')
+        
+        print(f'Evaluating on {len(X_test)} test samples')
+        print(f'Features: {list(X_test.columns)}')
+        print(f'Class distribution: {pd.Series(y_test).value_counts().to_dict()}')
+        
         # Load feature importance
         try:
             with open(feature_importance_path, 'r') as f:
@@ -82,40 +114,6 @@ implementation:
         except Exception as e:
             print(f'Warning loading feature importance: {e}')
             feature_importance_df = pd.DataFrame()
-        
-        # Extract test data
-        try:
-            X_test = data_wrapper.X_test
-            y_test = data_wrapper.y_test
-            dataset_info = data_wrapper.dataset_info
-            numeric_features = data_wrapper.numeric_features
-            categorical_features = data_wrapper.categorical_features
-        except AttributeError:
-            if hasattr(data_wrapper, '__dict__'):
-                X_test = data_wrapper.__dict__.get('X_test')
-                y_test = data_wrapper.__dict__.get('y_test')
-                dataset_info = data_wrapper.__dict__.get('dataset_info', {})
-                numeric_features = data_wrapper.__dict__.get('numeric_features', ['age', 'skills_score', 'years_experience', 'trainings_completed', 'projects_completed', 'project_success_rate', 'peer_feedback_score', 'manager_feedback_score', 'work_hours_weekly', 'certifications'])
-                categorical_features = data_wrapper.__dict__.get('categorical_features', ['department'])
-            else:
-                X_test = data_wrapper.get('X_test')
-                y_test = data_wrapper.get('y_test')
-                dataset_info = data_wrapper.get('dataset_info', {})
-                numeric_features = data_wrapper.get('numeric_features', ['age', 'skills_score', 'years_experience', 'trainings_completed', 'projects_completed', 'project_success_rate', 'peer_feedback_score', 'manager_feedback_score', 'work_hours_weekly', 'certifications'])
-                categorical_features = data_wrapper.get('categorical_features', ['department'])
-        
-        # Fallback for dataset_info
-        if not dataset_info:
-            dataset_info = {
-                'feature_columns': list(X_test.columns) if X_test is not None else [],
-                'target_column': 'performance_rating',
-                'problem_type': 'multiclass_classification',
-                'dataset_name': 'employee_performance'
-            }
-        
-        print(f'Evaluating on {len(X_test)} test samples')
-        print(f'Features: {dataset_info.get(\\\"feature_columns\\\", [])}')
-        print(f'Class distribution: {pd.Series(y_test).value_counts().to_dict()}')
         
         # Make predictions
         y_pred = model_pipeline.predict(X_test)
@@ -151,35 +149,35 @@ implementation:
                 'problem_type': 'multiclass_classification',
                 'dataset_name': 'employee_performance',
                 'total_samples': len(y_test),
-                'features_used': dataset_info.get('feature_columns', []),
+                'features_used': list(X_test.columns),
                 'feature_importance_count': len(feature_importance_df) if not feature_importance_df.empty else 0
             }
         }
         
         # Create detailed evaluation report
-        evaluation_report = f'Employee Performance Random Forest Evaluation Report'
-        evaluation_report += f'==============='
-        evaluation_report += f'Dataset: Employee Performance Prediction'
-        evaluation_report += f'Target Variable: {dataset_info.get(\\\"target_column\\\", \\\"performance_rating\\\")}'
+        evaluation_report = 'Employee Performance Random Forest Evaluation Report'
+        evaluation_report += '============='
+        evaluation_report += 'Dataset: Employee Performance Prediction'
+        evaluation_report += f'Target Variable: performance_rating'
         
-        evaluation_report += f'Model Performance Metrics:'
+        evaluation_report += 'Model Performance Metrics:'
         evaluation_report += f'Accuracy: {accuracy:.3f}'
         evaluation_report += f'Precision: {precision:.3f}'
         evaluation_report += f'Recall: {recall:.3f}'
         evaluation_report += f'F1-Score: {f1:.3f}'
         
-        evaluation_report += f'Class Distribution in Test Set:'
+        evaluation_report += 'Class Distribution in Test Set:'
         for rating, count in pd.Series(y_test).value_counts().sort_index().items():
             evaluation_report += f'Rating {rating}: {count} employees'
-        evaluation_report += f''
+        evaluation_report += ''
         
-        evaluation_report += f'Features Used:'
-        for feature in dataset_info.get('feature_columns', []):
+        evaluation_report += 'Features Used:'
+        for feature in list(X_test.columns):
             evaluation_report += f'- {feature}'
         
         # Add feature importance if available
         if not feature_importance_df.empty:
-            evaluation_report += f'Top 5 Most Important Features:'
+            evaluation_report += 'Top 5 Most Important Features:'
             top_features = feature_importance_df.head(5)
             for _, row in top_features.iterrows():
                 evaluation_report += f'- {row[\\\"feature\\\"]}: {row[\\\"importance\\\"]:.3f}'
