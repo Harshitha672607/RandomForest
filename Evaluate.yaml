@@ -1,4 +1,4 @@
-name: 2Employee Performance Random Forest Evaluate Model
+name: 3Employee Performance Random Forest Evaluate Model
 description: Evaluates trained Employee Performance Random Forest model and generates comprehensive classification metrics
 inputs:
   - name: trained_model
@@ -46,6 +46,12 @@ implementation:
         print(f'Data path: {data_path}')
         print(f'Feature importance path: {feature_importance_path}')
         
+        # Define the DataWrapper class - MUST BE DEFINED BEFORE UNPICKLING
+        class DataWrapper:
+            def __init__(self, data_dict=None):
+                if data_dict:
+                    self.__dict__.update(data_dict)
+        
         # Load trained model
         if not os.path.exists(trained_model_path):
             raise FileNotFoundError(f'trained_model does not exist: {trained_model_path}')
@@ -60,7 +66,7 @@ implementation:
         except Exception as e:
             raise Exception(f'ERROR loading trained model: {e}')
             
-        # Load processed data
+        # Load processed data - DataWrapper class is now defined
         try:
             with open(data_path, 'rb') as f:
                 data_wrapper = pickle.load(f)
@@ -135,9 +141,9 @@ implementation:
             }
         }
         
-        # Create detailed evaluation report
+        # Create detailed evaluation report with proper newlines
         evaluation_report = 'Employee Performance Random Forest Evaluation Report'
-        evaluation_report += '==============='
+        evaluation_report += '=' * 50 + ''
         evaluation_report += 'Dataset: Employee Performance Prediction'
         evaluation_report += f'Target Variable: performance_rating'
         
