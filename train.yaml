@@ -1,4 +1,4 @@
-name: 1Employee Performance Random Forest Train Model
+name: 2Employee Performance Random Forest Train Model
 description: Trains Random Forest model on employee performance data
 inputs:
   - name: data_path
@@ -53,14 +53,14 @@ implementation:
                 if data_dict:
                     self.__dict__.update(data_dict)
         
-        # Custom JSON encoder to handle NumPy types
+        # Custom JSON encoder to handle NumPy types - FIXED for newer NumPy versions
         class NumpyEncoder(json.JSONEncoder):
             def default(self, obj):
-                if isinstance(obj, (np.integer, np.int64)):
+                if isinstance(obj, (np.integer, np.int32, np.int64)):
                     return int(obj)
-                elif isinstance(obj, (np.floating, np.float64)):
+                elif isinstance(obj, (np.floating, np.float32, np.float64)):
                     return float(obj)
-                elif isinstance(obj, (np.bool_, np.bool)):
+                elif isinstance(obj, (np.bool_)):
                     return bool(obj)
                 elif isinstance(obj, np.ndarray):
                     return obj.tolist()
