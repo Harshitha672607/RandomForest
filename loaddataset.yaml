@@ -1,4 +1,4 @@
-name: Load Employee Performance CSV
+name: 1Load Employee Performance CSV
 description: Downloads an Employee Performance CSV file from a CDN, splits it into train/test datasets, and generates dataset metadata.
 
 inputs:
@@ -80,13 +80,28 @@ implementation:
         
         print(f'Using train split: {train_split}, test size: {test_size}')
 
-        # Stratified split for classification
-        train_df, test_df = train_test_split(
-            df, 
-            test_size=test_size, 
-            random_state=shuffle_seed,
-            stratify=df[target_column]
-        )
+        # FIX: Check if we can use stratified split (need at least 2 samples per class)
+        min_samples_per_class = df[target_column].value_counts().min()
+        can_stratify = min_samples_per_class >= 2
+        
+        if can_stratify:
+            print('Using stratified split (enough samples in all classes)')
+            # Stratified split for classification
+            train_df, test_df = train_test_split(
+                df, 
+                test_size=test_size, 
+                random_state=shuffle_seed,
+                stratify=df[target_column]
+            )
+        else:
+            print(f'Warning: Cannot use stratified split. Minimum samples per class: {min_samples_per_class}')
+            print('Using random split instead')
+            # Regular random split
+            train_df, test_df = train_test_split(
+                df, 
+                test_size=test_size, 
+                random_state=shuffle_seed
+            )
 
         print(f'Train shape: {train_df.shape}, Test shape: {test_df.shape}')
         print(f'Class distribution in train: {train_df[target_column].value_counts().to_dict()}')
@@ -114,14 +129,15 @@ implementation:
             'dtypes': {col: str(df[col].dtype) for col in df.columns},
             'target_distribution': df[target_column].value_counts().to_dict(),
             'problem_type': 'multiclass_classification',
-            'dataset_name': 'employee_performance'
+            'dataset_name': 'employee_performance',
+            'used_stratified_split': can_stratify
         }
 
         # Ensure directories exist before saving
         os.makedirs(os.path.dirname(train_data_path) or '.', exist_ok=True)
         train_df.to_csv(train_data_path, index=False)
 
-        os.makedirs(os.path.dirname(test_data_path) or '.', exist_ok=True)
+        os.makedirs(os.dirname(test_data_path) or '.', exist_ok=True)
         test_df.to_csv(test_data_path, index=False)
 
         os.makedirs(os.path.dirname(dataset_info_path) or '.', exist_ok=True)
