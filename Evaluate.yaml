@@ -1,4 +1,4 @@
-name: 1Employee Performance Random Forest Evaluate Model
+name: 2Employee Performance Random Forest Evaluate Model
 description: Evaluates trained Employee Performance Random Forest model and generates comprehensive classification metrics
 inputs:
   - name: trained_model
@@ -11,6 +11,7 @@ outputs:
   - name: metrics
     type: Metrics
   - name: metrics_json
+    type: String
   - name: evaluation_report
     type: String
 implementation:
@@ -59,17 +60,13 @@ implementation:
         except Exception as e:
             raise Exception(f'ERROR loading trained model: {e}')
             
-        # Try multiple ways to load data
-        X_test = None
-        y_test = None
-        
-        # Method 1: Try loading as pickle (processed data)
+        # Load processed data
         try:
             with open(data_path, 'rb') as f:
                 data_wrapper = pickle.load(f)
-            print('Data loaded as pickle successfully')
+            print('Data loaded successfully')
             
-            # Extract from DataWrapper object
+            # Extract test data from DataWrapper
             if hasattr(data_wrapper, 'X_test'):
                 X_test = data_wrapper.X_test
                 y_test = data_wrapper.y_test
@@ -79,27 +76,11 @@ implementation:
             elif isinstance(data_wrapper, dict):
                 X_test = data_wrapper.get('X_test')
                 y_test = data_wrapper.get('y_test')
+            else:
+                raise Exception('Could not extract test data from DataWrapper')
                 
         except Exception as e:
-            print(f'Failed to load as pickle: {e}')
-            # Method 2: Try loading as CSV (raw data)
-            try:
-                df = pd.read_csv(data_path)
-                print('Data loaded as CSV successfully')
-                
-                # Assume the data needs to be preprocessed
-                target_col = 'performance_rating'
-                if target_col in df.columns:
-                    X_test = df.drop(columns=[target_col, 'employee_id'] if 'employee_id' in df.columns else [target_col])
-                    y_test = df[target_col]
-                else:
-                    raise Exception('Target column not found in CSV data')
-                    
-            except Exception as e2:
-                raise Exception(f'ERROR loading data as either pickle or CSV: {e2}')
-        
-        if X_test is None or y_test is None:
-            raise Exception('Could not extract X_test and y_test from data')
+            raise Exception(f'ERROR loading processed data: {e}')
         
         print(f'Evaluating on {len(X_test)} test samples')
         print(f'Features: {list(X_test.columns)}')
@@ -156,7 +137,7 @@ implementation:
         
         # Create detailed evaluation report
         evaluation_report = 'Employee Performance Random Forest Evaluation Report'
-        evaluation_report += '============='
+        evaluation_report += '==============='
         evaluation_report += 'Dataset: Employee Performance Prediction'
         evaluation_report += f'Target Variable: performance_rating'
         
@@ -177,7 +158,7 @@ implementation:
         
         # Add feature importance if available
         if not feature_importance_df.empty:
-            evaluation_report += 'Top 5 Most Important Features:'
+            evaluation_report += '\\nTop 5 Most Important Features:'
             top_features = feature_importance_df.head(5)
             for _, row in top_features.iterrows():
                 evaluation_report += f'- {row[\\\"feature\\\"]}: {row[\\\"importance\\\"]:.3f}'
