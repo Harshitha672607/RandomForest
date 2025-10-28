@@ -1,0 +1,225 @@
+name: Employee Performance Random Forest Evaluate Model
+description: Evaluates trained Employee Performance Random Forest model and generates comprehensive classification metrics
+inputs:
+  - name: trained_model
+    type: Model
+  - name: data_path
+    type: Dataset
+  - name: feature_importance
+    type: String
+outputs:
+  - name: metrics
+    type: Metrics
+  - name: metrics_json
+    type: String
+  - name: evaluation_report
+    type: String
+implementation:
+  container:
+    image: nikhilv215/nesy-factory:v22
+    command:
+      - sh
+      - -c
+      - |
+        python -c "
+        import sys, os, pickle, json, pandas as pd, numpy as np
+        from sklearn.metrics import (accuracy_score, precision_score, recall_score, f1_score, 
+                                   confusion_matrix, classification_report)
+        
+        print('Number of arguments received:', len(sys.argv))
+        for i, arg in enumerate(sys.argv):
+            print(f'  Argument {i}: {arg}')
+        
+        # Get args - Skip the first 2 arguments (-c and --) and take the next 6
+        if len(sys.argv) < 8:
+            raise ValueError(f'Expected at least 8 arguments, got {len(sys.argv)}')
+        
+        trained_model_path = sys.argv[2]
+        data_path = sys.argv[3]
+        feature_importance_path = sys.argv[4]
+        metrics_path = sys.argv[5]
+        metrics_json_path = sys.argv[6]
+        evaluation_report_path = sys.argv[7]
+        
+        print('Starting Employee Performance Random Forest Evaluation')
+        print(f'Trained model path: {trained_model_path}')
+        print(f'Data path: {data_path}')
+        print(f'Feature importance path: {feature_importance_path}')
+        
+        # Define the DataWrapper class
+        class DataWrapper:
+            def __init__(self, data_dict=None):
+                if data_dict:
+                    self.__dict__.update(data_dict)
+        
+        # Load trained model
+        if not os.path.exists(trained_model_path):
+            raise FileNotFoundError(f'trained_model does not exist: {trained_model_path}')
+            
+        if not os.path.exists(data_path):
+            raise FileNotFoundError(f'data_path does not exist: {data_path}')
+            
+        try:
+            with open(trained_model_path, 'rb') as f:
+                model_pipeline = pickle.load(f)
+            print('Trained model loaded successfully')
+        except Exception as e:
+            raise Exception(f'ERROR loading trained model: {e}')
+            
+        try:
+            with open(data_path, 'rb') as f:
+                data_wrapper = pickle.load(f)
+            print('Data loaded successfully')
+        except Exception as e:
+            raise Exception(f'ERROR loading data: {e}')
+            
+        # Load feature importance
+        try:
+            with open(feature_importance_path, 'r') as f:
+                feature_importance_csv = f.read()
+            feature_importance_df = pd.read_csv(pd.compat.StringIO(feature_importance_csv))
+            print('Feature importance loaded successfully')
+        except Exception as e:
+            print(f'Warning loading feature importance: {e}')
+            feature_importance_df = pd.DataFrame()
+        
+        # Extract test data
+        try:
+            X_test = data_wrapper.X_test
+            y_test = data_wrapper.y_test
+            dataset_info = data_wrapper.dataset_info
+            numeric_features = data_wrapper.numeric_features
+            categorical_features = data_wrapper.categorical_features
+        except AttributeError:
+            if hasattr(data_wrapper, '__dict__'):
+                X_test = data_wrapper.__dict__.get('X_test')
+                y_test = data_wrapper.__dict__.get('y_test')
+                dataset_info = data_wrapper.__dict__.get('dataset_info', {})
+                numeric_features = data_wrapper.__dict__.get('numeric_features', ['age', 'skills_score', 'years_experience', 'trainings_completed', 'projects_completed', 'project_success_rate', 'peer_feedback_score', 'manager_feedback_score', 'work_hours_weekly', 'certifications'])
+                categorical_features = data_wrapper.__dict__.get('categorical_features', ['department'])
+            else:
+                X_test = data_wrapper.get('X_test')
+                y_test = data_wrapper.get('y_test')
+                dataset_info = data_wrapper.get('dataset_info', {})
+                numeric_features = data_wrapper.get('numeric_features', ['age', 'skills_score', 'years_experience', 'trainings_completed', 'projects_completed', 'project_success_rate', 'peer_feedback_score', 'manager_feedback_score', 'work_hours_weekly', 'certifications'])
+                categorical_features = data_wrapper.get('categorical_features', ['department'])
+        
+        # Fallback for dataset_info
+        if not dataset_info:
+            dataset_info = {
+                'feature_columns': list(X_test.columns) if X_test is not None else [],
+                'target_column': 'performance_rating',
+                'problem_type': 'multiclass_classification',
+                'dataset_name': 'employee_performance'
+            }
+        
+        print(f'Evaluating on {len(X_test)} test samples')
+        print(f'Features: {dataset_info.get(\\\"feature_columns\\\", [])}')
+        print(f'Class distribution: {pd.Series(y_test).value_counts().to_dict()}')
+        
+        # Make predictions
+        y_pred = model_pipeline.predict(X_test)
+        
+        # Calculate comprehensive classification metrics
+        accuracy = accuracy_score(y_test, y_pred)
+        precision = precision_score(y_test, y_pred, average='weighted')
+        recall = recall_score(y_test, y_pred, average='weighted')
+        f1 = f1_score(y_test, y_pred, average='weighted')
+        
+        # Additional metrics
+        cm = confusion_matrix(y_test, y_pred)
+        
+        # Classification report as dict
+        class_report = classification_report(y_test, y_pred, output_dict=True)
+        
+        # Create comprehensive metrics dictionary
+        metrics = {
+            'test_metrics': {
+                'accuracy': float(accuracy),
+                'precision': float(precision),
+                'recall': float(recall),
+                'f1_score': float(f1)
+            },
+            'classification_report': class_report,
+            'confusion_matrix': cm.tolist(),
+            'target_statistics': {
+                'total_samples': len(y_test),
+                'class_distribution': pd.Series(y_test).value_counts().to_dict()
+            },
+            'model_info': {
+                'model_type': 'random_forest',
+                'problem_type': 'multiclass_classification',
+                'dataset_name': 'employee_performance',
+                'total_samples': len(y_test),
+                'features_used': dataset_info.get('feature_columns', []),
+                'feature_importance_count': len(feature_importance_df) if not feature_importance_df.empty else 0
+            }
+        }
+        
+        # Create detailed evaluation report
+        evaluation_report = f'Employee Performance Random Forest Evaluation Report'
+        evaluation_report += f'==============='
+        evaluation_report += f'Dataset: Employee Performance Prediction'
+        evaluation_report += f'Target Variable: {dataset_info.get(\\\"target_column\\\", \\\"performance_rating\\\")}'
+        
+        evaluation_report += f'Model Performance Metrics:'
+        evaluation_report += f'Accuracy: {accuracy:.3f}'
+        evaluation_report += f'Precision: {precision:.3f}'
+        evaluation_report += f'Recall: {recall:.3f}'
+        evaluation_report += f'F1-Score: {f1:.3f}'
+        
+        evaluation_report += f'Class Distribution in Test Set:'
+        for rating, count in pd.Series(y_test).value_counts().sort_index().items():
+            evaluation_report += f'Rating {rating}: {count} employees'
+        evaluation_report += f''
+        
+        evaluation_report += f'Features Used:'
+        for feature in dataset_info.get('feature_columns', []):
+            evaluation_report += f'- {feature}'
+        
+        # Add feature importance if available
+        if not feature_importance_df.empty:
+            evaluation_report += f'Top 5 Most Important Features:'
+            top_features = feature_importance_df.head(5)
+            for _, row in top_features.iterrows():
+                evaluation_report += f'- {row[\\\"feature\\\"]}: {row[\\\"importance\\\"]:.3f}'
+        
+        # Save outputs
+        try:
+            os.makedirs(os.path.dirname(metrics_path) or '.', exist_ok=True)
+            os.makedirs(os.path.dirname(metrics_json_path) or '.', exist_ok=True)
+            os.makedirs(os.path.dirname(evaluation_report_path) or '.', exist_ok=True)
+            
+            # Save metrics
+            with open(metrics_path, 'w') as f:
+                json.dump(metrics, f, indent=2)
+            
+            # Save metrics JSON
+            with open(metrics_json_path, 'w') as f:
+                json.dump(metrics, f, indent=2)
+            
+            # Save evaluation report
+            with open(evaluation_report_path, 'w') as f:
+                f.write(evaluation_report)
+            
+            print('Evaluation Complete')
+            print('=== Test Performance ===')
+            print(f'Accuracy:  {accuracy:.3f}')
+            print(f'Precision: {precision:.3f}')
+            print(f'Recall:    {recall:.3f}')
+            print(f'F1-Score:  {f1:.3f}')
+            
+        except Exception as e:
+            raise Exception(f'ERROR saving results: {e}')
+        
+        print('Model evaluation completed successfully!')
+        print(f'Metrics saved to: {metrics_path}')
+        print(f'Evaluation report saved to: {evaluation_report_path}')
+        " -- "$0" "$1" "$2" "$3" "$4" "$5" "$6"
+    args:
+      - {inputPath: trained_model}
+      - {inputPath: data_path}
+      - {inputPath: feature_importance}
+      - {outputPath: metrics}
+      - {outputPath: metrics_json}
+      - {outputPath: evaluation_report}
